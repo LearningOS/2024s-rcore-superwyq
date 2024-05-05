@@ -22,7 +22,7 @@ bitflags! {
 #[derive(Copy, Clone)]
 #[repr(C)]
 /// page table entry structure
-pub struct PageTableEntry {
+pub struct PageTableEntry { //作用是：将虚拟地址映射到物理地址
     /// bits of page table entry
     pub bits: usize,
 }
@@ -40,7 +40,7 @@ impl PageTableEntry {
     }
     /// Get the physical page number from the page table entry
     pub fn ppn(&self) -> PhysPageNum {
-        (self.bits >> 10 & ((1usize << 44) - 1)).into()
+        (self.bits >> 10 & ((1usize << 44) - 1)).into() //44位物理页号，10位
     }
     /// Get the flags from the page table entry
     pub fn flags(&self) -> PTEFlags {
@@ -66,8 +66,8 @@ impl PageTableEntry {
 
 /// page table structure
 pub struct PageTable {
-    root_ppn: PhysPageNum,
-    frames: Vec<FrameTracker>,
+    root_ppn: PhysPageNum, //根页表的物理页号
+    frames: Vec<FrameTracker>, //页表的帧
 }
 
 /// Assume that it won't oom when creating/mapping.
@@ -93,7 +93,7 @@ impl PageTable {
         let mut ppn = self.root_ppn;
         let mut result: Option<&mut PageTableEntry> = None;
         for (i, idx) in idxs.iter().enumerate() {
-            let pte = &mut ppn.get_pte_array()[*idx];
+            let pte = &mut ppn.get_pte_array()[*idx]; //获取页表项
             if i == 2 {
                 result = Some(pte);
                 break;

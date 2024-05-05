@@ -14,7 +14,9 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use crate::config::MAX_SYSCALL_NUM;
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::VirtAddr;
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
@@ -153,6 +155,40 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// Add running task syscall times
+    fn add_syscall_times(&self,syscall_id:usize){
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].sys_call_times[syscall_id] += 1;
+        drop(inner);
+    }
+
+    fn get_syscall_times(&self) -> [u32;MAX_SYSCALL_NUM]{
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        
+        let result = inner.tasks[current].sys_call_times;
+        drop(inner);
+        result
+    }
+
+    fn task_start_time(&self) -> usize {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        
+        let result = inner.tasks[current].start_time;
+        drop(inner);
+        result
+    }
+
+    fn mmap(&self, addr: VirtAddr, size: usize, prot: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let result = inner.tasks[current].memory_set.mmap(addr, size, prot);
+        drop(inner);
+        result
+    }
 }
 
 /// Run the first task in task list.
@@ -201,4 +237,24 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// Add running task syscall times
+pub fn add_syscall_times(syscall_id:usize) {
+    TASK_MANAGER.add_syscall_times(syscall_id)
+}
+
+/// task_start_time
+pub fn task_start_time() -> usize {
+    TASK_MANAGER.task_start_time()
+}
+
+/// get_syscall_times
+pub fn get_syscall_times() -> [u32;MAX_SYSCALL_NUM] {
+    TASK_MANAGER.get_syscall_times()
+}
+
+/// mmap
+pub fn mmap(addr: VirtAddr, size: usize, prot: usize) -> isize {
+    TASK_MANAGER.mmap(addr, size, prot)
 }

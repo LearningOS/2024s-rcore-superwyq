@@ -35,8 +35,8 @@ lazy_static! {
 }
 /// address space
 pub struct MemorySet {
-    page_table: PageTable,
-    areas: Vec<MapArea>,
+    page_table: PageTable, //页表所在的物理帧
+    areas: Vec<MapArea>, //存储映射区域
 }
 
 impl MemorySet {
@@ -262,13 +262,52 @@ impl MemorySet {
             false
         }
     }
+
+    /// mmap
+    pub fn mmap(&mut self,start:VirtAddr,len:usize,port:usize) -> isize {
+        let end = start + len;
+        let start_vpn:VirtPageNum = start.floor();
+        let end_vpn:VirtPageNum = end.ceil();
+        
+        let mut vpn = start_vpn;
+        let mut petflag = PTEFlags::empty();
+        if port & 0b0000_0001 != 0 {
+            petflag |= PTEFlags::R;
+        }
+        if port & 0b0000_0010 != 0 {
+            petflag |= PTEFlags::W;
+        }
+        if port & 0b0000_0100 != 0 {
+            petflag |= PTEFlags::X;
+        }
+        petflag |= PTEFlags::U;
+        petflag |= PTEFlags::V;
+        while vpn != end_vpn {
+            if let Some(_pte) = self.page_table.translate(vpn) {
+                debug!("vpn has been alloced: {:#x}",_pte.ppn().0);
+                //这里test时总会出现error，vpn会map到一个0x0的物理页，很怪
+                if _pte.is_valid() {
+                    return -1;
+                }
+            }
+            if let Some(frame) = frame_alloc(){
+                debug!("vpn {:#x} alloced: {:#x}",vpn.0,frame.ppn.0);
+                self.page_table.map(vpn,frame.ppn,petflag);
+                vpn.step();
+            }else {
+                debug!("frame alloc error");
+                return -1;
+            }
+        }
+        0
+    }
 }
-/// map area structure, controls a contiguous piece of virtual memory
+/// map area structure, controls a contiguous piece of virtual memory，虚拟地址中的逻辑段
 pub struct MapArea {
-    vpn_range: VPNRange,
-    data_frames: BTreeMap<VirtPageNum, FrameTracker>,
-    map_type: MapType,
-    map_perm: MapPermission,
+    vpn_range: VPNRange, //虚拟页号范围
+    data_frames: BTreeMap<VirtPageNum, FrameTracker>, //存放虚拟页号以及对应的物理帧
+    map_type: MapType, //映射类型，两种类型，一种恒等映射，一种帧映射
+    map_perm: MapPermission, //映射权限
 }
 
 impl MapArea {
