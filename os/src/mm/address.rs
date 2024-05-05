@@ -122,6 +122,12 @@ impl Add<usize> for VirtAddr {
         Self(self.0 + rhs)
     }
 }
+impl Add<VirtAddr> for VirtAddr {
+    type Output = Self;
+    fn add(self, rhs: VirtAddr) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
 
 impl From<VirtAddr> for VirtPageNum {
     fn from(v: VirtAddr) -> Self {

@@ -1,8 +1,9 @@
 //! Process management syscalls
 use crate::{
-    config::MAX_SYSCALL_NUM, mm::{translated_byte_buffer,VirtAddr},
+    config::MAX_SYSCALL_NUM, 
+    mm::{translated_byte_buffer,VirtAddr},
     task::{
-        change_program_brk, current_user_token, exit_current_and_run_next, get_syscall_times, mmap, suspend_current_and_run_next, task_start_time, TaskStatus
+        change_program_brk, current_user_token, exit_current_and_run_next, get_syscall_times, mmap, munmap, suspend_current_and_run_next, task_start_time, TaskStatus
     },
     timer::{get_time_ms, get_time_us}
 };
@@ -68,17 +69,13 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
 
 // YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
+    trace!("kernel: sys_mmap");
+    if !VirtAddr(_start).aligned() {
+        debug!("kernel: sys_mmap start address is not page aligned");
+        return -1;
+    }
     if _port & !0x7 !=0 || _port & 0b0000_0111 == 0 {
         debug!("kernel: sys_mmap port error");
-        return -1;
-    }
-    if !VirtAddr(_start).aligned() || !VirtAddr(_len).aligned() {
-        debug!("kernel: sys_mmap start or len not page aligned");
-        return -1;
-    }
-    if _len == 0 {
-        debug!("kernel: sys_mmap len is zero");
         return -1;
     }
     mmap(VirtAddr(_start), _len, _port)
@@ -86,8 +83,9 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
 
 // YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
-    -1
+    trace!("kernel: sys_munmap");
+    debug!("kernel: sys_munmap, start: {:#x}, len: {:#x}", _start, _len);
+    munmap(VirtAddr(_start), _len)
 }
 /// change data segment size
 pub fn sys_sbrk(size: i32) -> isize {

@@ -182,13 +182,6 @@ impl TaskManager {
         result
     }
 
-    fn mmap(&self, addr: VirtAddr, size: usize, prot: usize) -> isize {
-        let mut inner = self.inner.exclusive_access();
-        let current = inner.current_task;
-        let result = inner.tasks[current].memory_set.mmap(addr, size, prot);
-        drop(inner);
-        result
-    }
 }
 
 /// Run the first task in task list.
@@ -256,5 +249,18 @@ pub fn get_syscall_times() -> [u32;MAX_SYSCALL_NUM] {
 
 /// mmap
 pub fn mmap(addr: VirtAddr, size: usize, prot: usize) -> isize {
-    TASK_MANAGER.mmap(addr, size, prot)
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let current = inner.current_task;
+    let result = inner.tasks[current].memory_set.mmap(addr, size, prot);
+    drop(inner);
+    result
+}
+
+/// munmap
+pub fn munmap(addr: VirtAddr, size: usize) -> isize {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let current = inner.current_task;
+    let result = inner.tasks[current].memory_set.munmap(addr, size);
+    drop(inner);
+    result
 }

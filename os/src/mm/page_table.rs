@@ -22,7 +22,7 @@ bitflags! {
 #[derive(Copy, Clone)]
 #[repr(C)]
 /// page table entry structure
-pub struct PageTableEntry { //作用是：将虚拟地址映射到物理地址
+pub struct PageTableEntry { //页表项，最低8位为flags，8到10为RSW，10到54为物理页号，54到64为保留位
     /// bits of page table entry
     pub bits: usize,
 }
@@ -31,7 +31,7 @@ impl PageTableEntry {
     /// Create a new page table entry
     pub fn new(ppn: PhysPageNum, flags: PTEFlags) -> Self {
         PageTableEntry {
-            bits: ppn.0 << 10 | flags.bits as usize,
+            bits: ppn.0 << 10 | flags.bits as usize, //将物理页号左移10位，和flags的低8位做或运算，得到页表项
         }
     }
     /// Create an empty page table entry
@@ -40,11 +40,12 @@ impl PageTableEntry {
     }
     /// Get the physical page number from the page table entry
     pub fn ppn(&self) -> PhysPageNum {
-        (self.bits >> 10 & ((1usize << 44) - 1)).into() //44位物理页号，10位
+        (self.bits >> 10 & ((1usize << 44) - 1)).into() 
+        //右移10位，取第10~64位，和0x0000_ffff_ffff_ffff做与运算，得到物理页号
     }
     /// Get the flags from the page table entry
     pub fn flags(&self) -> PTEFlags {
-        PTEFlags::from_bits(self.bits as u8).unwrap()
+        PTEFlags::from_bits(self.bits as u8).unwrap() //将低8位转换为PTEFlags
     }
     /// The page pointered by page table entry is valid?
     pub fn is_valid(&self) -> bool {
@@ -93,7 +94,7 @@ impl PageTable {
         let mut ppn = self.root_ppn;
         let mut result: Option<&mut PageTableEntry> = None;
         for (i, idx) in idxs.iter().enumerate() {
-            let pte = &mut ppn.get_pte_array()[*idx]; //获取页表项
+            let pte = &mut ppn.get_pte_array()[*idx]; //获取该级的页表项，如果不存在则创建
             if i == 2 {
                 result = Some(pte);
                 break;
@@ -156,7 +157,7 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
     let end = start + len;
     let mut v = Vec::new();
     while start < end {
-        let start_va = VirtAddr::from(start);
+        let start_va = VirtAddr::from(start); 
         let mut vpn = start_va.floor();
         let ppn = page_table.translate(vpn).unwrap().ppn();
         vpn.step();
