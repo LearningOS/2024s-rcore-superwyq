@@ -8,7 +8,8 @@ use crate::{
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next, TaskStatus,
-    },
+    }, 
+    timer::{get_time_us,get_time_ms}
 };
 
 #[repr(C)]
@@ -122,7 +123,11 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let _timeval_ptr = translated_refmut(current_user_token(), _ts);
+    let us = get_time_us();
+    (*_timeval_ptr).sec = us / 1_000_000;
+    (*_timeval_ptr).usec = us % 1_000_000;
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
@@ -133,7 +138,12 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
         "kernel:pid[{}] sys_task_info NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let _ti_ptr = translated_refmut(current_user_token(), _ti);
+    let task = current_task().unwrap();
+    (*_ti_ptr).status = task.inner_exclusive_access().task_status;
+    (*_ti_ptr).syscall_times = task.inner_exclusive_access().syscall_times;
+    (*_ti_ptr).time = get_time_ms() - task.inner_exclusive_access().start_time;
+    0
 }
 
 /// YOUR JOB: Implement mmap.
@@ -151,7 +161,7 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
         "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    0
 }
 
 /// change data segment size

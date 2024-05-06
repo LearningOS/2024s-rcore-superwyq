@@ -64,7 +64,8 @@ pub fn pid_alloc() -> PidHandle {
 
 /// Return (bottom, top) of a kernel stack in kernel space.
 pub fn kernel_stack_position(app_id: usize) -> (usize, usize) {
-    let top = TRAMPOLINE - app_id * (KERNEL_STACK_SIZE + PAGE_SIZE);
+    let top = TRAMPOLINE - app_id * (KERNEL_STACK_SIZE + PAGE_SIZE); 
+    //这里为什么有个page_size？中间间隔一页？还是说这一页存储的进程信息？
     let bottom = top - KERNEL_STACK_SIZE;
     (bottom, top)
 }
