@@ -300,6 +300,73 @@ impl MemorySet {
             false
         }
     }
+
+    /// mmap
+    pub fn mmap(&mut self,start:VirtAddr,len:usize,port:usize) -> isize {
+        let end = VirtAddr(usize::from(start) + len);
+        let start_vpn:VirtPageNum = start.floor();
+        let end_vpn:VirtPageNum = end.ceil();
+        
+        let mut vpn = start_vpn;
+        let mut petflag = PTEFlags::empty();
+        if port & 0b0000_0001 != 0 {
+            petflag |= PTEFlags::R;
+        }
+        if port & 0b0000_0010 != 0 {
+            petflag |= PTEFlags::W;
+        }
+        if port & 0b0000_0100 != 0 {
+            petflag |= PTEFlags::X;
+        }
+        petflag |= PTEFlags::U;
+        petflag |= PTEFlags::V;
+        debug!("mmap function called:start:{:#x},,len:{:#x}",start.0,len);
+        while vpn != end_vpn {
+            if let Some(_pte) = self.page_table.translate(vpn) {
+                if _pte.is_valid() {
+                debug!("vpn{:#x} re-alloc: {:#x}",vpn.0,usize::from(_pte.ppn()));
+                return -1;
+                }
+            }
+            if let Some(frame) = frame_alloc(){
+                if frame.ppn.0 == 0 {
+                    debug!("frame alloc error");
+                    return -1;
+                }
+                debug!("vpn {:#x} alloced: {:#x}",vpn.0,usize::from(frame.ppn));
+                self.page_table.map(vpn,frame.ppn,petflag);
+                vpn.step();
+            }else {
+                debug!("frame alloc error");
+                return -1;
+            }
+        }
+        0
+    }
+
+    /// munmap
+    pub fn munmap(&mut self,start:VirtAddr,len:usize) -> isize {
+        let end = VirtAddr(usize::from(start) + len);
+        let start_vpn:VirtPageNum = start.floor();
+        let end_vpn:VirtPageNum = end.ceil();
+        let mut vpn = start_vpn;
+        while vpn != end_vpn {
+            if let Some(_pte) = self.page_table.translate(vpn) {
+                if _pte.is_valid() {
+                    debug!("vpn {:#x} unmaped: {:#x}",vpn.0,_pte.ppn().0);
+                    self.page_table.unmap(vpn);
+                    vpn.step();
+                }else {
+                    debug!("vpn {:#x} has been unmaped",vpn.0);
+                    return -1;
+                }
+            }else {
+                debug!("vpn {:#x} has been unmaped",vpn.0);
+                return -1;
+            }
+        }
+        0
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {

@@ -4,7 +4,7 @@ use alloc::sync::Arc;
 use crate::{
     config::MAX_SYSCALL_NUM,
     loader::get_app_data_by_name,
-    mm::{translated_refmut, translated_str},
+    mm::{translated_refmut, translated_str,VirtAddr},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next, TaskStatus,
@@ -152,7 +152,15 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
         "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if !VirtAddr(_start).aligned(){
+        debug!("start is not aligned");
+        return -1;
+    }
+    if _port & !0x7 != 0 || _port & 0b0000_0111 == 0{
+        debug!("port is not allowed");
+        return -1;
+    }
+    current_task().unwrap().inner_exclusive_access().memory_set.mmap(VirtAddr(_start), _len, _port)
 }
 
 /// YOUR JOB: Implement munmap.
@@ -161,7 +169,11 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
         "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    0
+    if !VirtAddr(_start).aligned(){
+        debug!("start is not aligned");
+        return -1;
+    }
+    current_task().unwrap().inner_exclusive_access().memory_set.munmap(VirtAddr(_start), _len)
 }
 
 /// change data segment size
