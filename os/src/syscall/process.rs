@@ -2,14 +2,11 @@
 use alloc::sync::Arc;
 
 use crate::{
-    config::MAX_SYSCALL_NUM,
-    loader::get_app_data_by_name,
-    mm::{translated_refmut, translated_str,VirtAddr},
+    config::MAX_SYSCALL_NUM, loader::get_app_data_by_name, mm::{translated_refmut, translated_str,VirtAddr},  
     task::{
-        add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus,
+        add_task, current_task, current_user_token, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus
     }, 
-    timer::{get_time_us,get_time_ms}
+    timer::{get_time_ms, get_time_us}
 };
 
 #[repr(C)]
@@ -58,10 +55,10 @@ pub fn sys_fork() -> isize {
     let trap_cx = new_task.inner_exclusive_access().get_trap_cx();
     // we do not have to move to next instruction since we have done it before
     // for child process, fork returns 0
-    trap_cx.x[10] = 0;
+    trap_cx.x[10] = 0; //通用寄存器x10,常用来存放返回值，将x10设为0，实现子进程返回值为0
     // add new task to scheduler
     add_task(new_task);
-    new_pid as isize
+    new_pid as isize //对于父进程，fork返回子进程的pid
 }
 
 pub fn sys_exec(path: *const u8) -> isize {
@@ -91,7 +88,8 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
         .iter()
         .any(|p| pid == -1 || pid as usize == p.getpid())
     {
-        return -1;
+        trace!("kernel::pid[{}] sys_waitpid not found", task.pid.0);
+        return -1; //没有找到对应的子进程，返回-1
         // ---- release current PCB
     }
     let pair = inner.children.iter().enumerate().find(|(_, p)| {
@@ -108,9 +106,11 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
         let exit_code = child.inner_exclusive_access().exit_code;
         // ++++ release child PCB
         *translated_refmut(inner.memory_set.token(), exit_code_ptr) = exit_code;
-        found_pid as isize
+        trace!("kernel::pid[{}] sys_waitpid found [{}]", task.pid.0, found_pid);
+        found_pid as isize //返回子进程的pid
     } else {
-        -2
+        trace!("kernel::pid[{}] sys_waitpid not zombie", task.pid.0);
+        -2 //找到了对应的子进程，但是子进程还在运行，返回-2
     }
     // ---- release current PCB automatically
 }
@@ -120,7 +120,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_get_time",
         current_task().unwrap().pid.0
     );
     let _timeval_ptr = translated_refmut(current_user_token(), _ts);
@@ -190,10 +190,20 @@ pub fn sys_sbrk(size: i32) -> isize {
 /// HINT: fork + exec =/= spawn
 pub fn sys_spawn(_path: *const u8) -> isize {
     trace!(
-        "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_spawn",
         current_task().unwrap().pid.0
     );
-    -1
+    let current_task = current_task().unwrap();
+    let option_app_elf = get_app_data_by_name(translated_str(current_user_token(), _path).as_str());
+    match option_app_elf {
+        Some(app_elf) => {
+            let new_task = current_task.spawn(&app_elf);
+            let new_pid = new_task.pid.0;
+            add_task(new_task);
+            new_pid as isize
+        }
+        None => -1,
+    }
 }
 
 // YOUR JOB: Set task priority.
@@ -202,5 +212,9 @@ pub fn sys_set_priority(_prio: isize) -> isize {
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if _prio < 2{
+        return -1;
+    }
+    current_task().unwrap().change_priority(_prio as usize);
+    _prio
 }

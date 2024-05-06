@@ -23,7 +23,19 @@ impl TaskManager {
     }
     /// Take a process out of the ready queue
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
+        self.sort();
         self.ready_queue.pop_front()
+    }
+
+    ///sort of ready queue by stride
+    pub fn sort(&mut self) {
+        self.ready_queue.make_contiguous().sort_by(|a, b| {
+            a.inner_exclusive_access().stride.cmp(&b.inner_exclusive_access().stride)
+        });
+        //输出ready_queue的情况：
+        for task in self.ready_queue.iter() {
+            debug!("kernel: TaskManager::sort task: {:?},task stride:{:?}", task.getpid(),task.inner_exclusive_access().stride);
+        }
     }
 }
 
@@ -43,4 +55,5 @@ pub fn add_task(task: Arc<TaskControlBlock>) {
 pub fn fetch_task() -> Option<Arc<TaskControlBlock>> {
     //trace!("kernel: TaskManager::fetch_task");
     TASK_MANAGER.exclusive_access().fetch()
+
 }

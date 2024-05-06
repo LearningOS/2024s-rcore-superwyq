@@ -75,6 +75,12 @@ pub struct TaskControlBlockInner {
 
     /// begin time
     pub start_time: usize,
+
+    ///priority
+    pub priority: usize,
+
+    ///stride
+    pub stride: usize,
 }
 
 impl TaskControlBlockInner {
@@ -126,7 +132,9 @@ impl TaskControlBlock {
                     heap_bottom: user_sp,
                     program_brk: user_sp,
                     syscall_times: [0; MAX_SYSCALL_NUM],
-                    start_time: get_time_ms()
+                    start_time: get_time_ms(),
+                    priority: 16,
+                    stride: 0
                 })
             },
         };
@@ -201,7 +209,9 @@ impl TaskControlBlock {
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
                     syscall_times: [0; MAX_SYSCALL_NUM],
-                    start_time: get_time_ms()
+                    start_time: get_time_ms(),
+                    priority: 16,
+                    stride: 0
                 })
             },
         });
@@ -217,6 +227,54 @@ impl TaskControlBlock {
         // ---- release parent PCB
     }
 
+    /// spawn a new process,和fork不同，spawn会加载一个新的elf文件，而fork只是复制当前进程的内存空间
+    pub fn spawn(self: &Arc<Self>, elf_data: &[u8]) -> Arc<Self> {
+        // memory_set with elf program headers/trampoline/trap context/user stack
+        let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
+        let trap_cx_ppn = memory_set
+            .translate(VirtAddr::from(TRAP_CONTEXT_BASE).into())
+            .unwrap()
+            .ppn();
+        // alloc a pid and a kernel stack in kernel space
+        let pid_handle = pid_alloc();
+        let kernel_stack = kstack_alloc();
+        let kernel_stack_top = kernel_stack.get_top();
+        // push a task context which goes to trap_return to the top of kernel stack
+        let task_control_block = Arc::new(TaskControlBlock {
+            pid: pid_handle,
+            kernel_stack,
+            inner: unsafe {
+                UPSafeCell::new(TaskControlBlockInner {
+                    trap_cx_ppn,
+                    base_size: user_sp,
+                    task_cx: TaskContext::goto_trap_return(kernel_stack_top),
+                    task_status: TaskStatus::Ready,
+                    memory_set,
+                    parent: Some(Arc::downgrade(self)), //弱引用，不增加父进程的引用计数
+                    children: Vec::new(),
+                    exit_code: 0,
+                    heap_bottom: user_sp,
+                    program_brk: user_sp,
+                    syscall_times: [0; MAX_SYSCALL_NUM],
+                    start_time: get_time_ms(),
+                    priority: 16,
+                    stride: 0
+                })
+            },
+        });
+        // prepare TrapContext in user space
+        let trap_cx = task_control_block.inner_exclusive_access().get_trap_cx();
+        *trap_cx = TrapContext::app_init_context(
+            entry_point,
+            user_sp,
+            KERNEL_SPACE.exclusive_access().token(),
+            kernel_stack_top,
+            trap_handler as usize,
+        );
+        // add child
+        self.inner_exclusive_access().children.push(task_control_block.clone());
+        task_control_block
+    }
     /// get pid of process
     pub fn getpid(&self) -> usize {
         self.pid.0
@@ -246,6 +304,12 @@ impl TaskControlBlock {
         } else {
             None
         }
+    }
+
+    ///change the priority of the process
+    pub fn change_priority(&self, priority: usize) {
+        let mut inner = self.inner_exclusive_access();
+        inner.priority = priority;
     }
 }
 

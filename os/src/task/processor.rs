@@ -11,6 +11,7 @@ use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use lazy_static::*;
+use crate::config::BIG_STRIDE;
 
 /// Processor management structure
 pub struct Processor {
@@ -56,11 +57,14 @@ pub fn run_tasks() {
     loop {
         let mut processor = PROCESSOR.exclusive_access();
         if let Some(task) = fetch_task() {
+            debug!("run task: task {:?}", task.getpid());
             let idle_task_cx_ptr = processor.get_idle_task_cx_ptr();
             // access coming task TCB exclusively
             let mut task_inner = task.inner_exclusive_access();
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_status = TaskStatus::Running;
+            task_inner.stride += (BIG_STRIDE/ task_inner.priority) as usize;
+            debug!("task {:?} stride: {}", task.getpid(), task_inner.stride);
             // release coming task_inner manually
             drop(task_inner);
             // release coming task TCB manually
