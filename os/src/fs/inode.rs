@@ -4,7 +4,7 @@
 //!
 //! `UPSafeCell<OSInodeInner>` -> `OSInode`: for static `ROOT_INODE`,we
 //! need to wrap `OSInodeInner` into `UPSafeCell`
-use super::File;
+use super::{File, StatMode};
 use crate::drivers::BLOCK_DEVICE;
 use crate::mm::UserBuffer;
 use crate::sync::UPSafeCell;
@@ -17,6 +17,8 @@ use lazy_static::*;
 /// inode in memory
 /// A wrapper around a filesystem inode
 /// to implement File trait atop
+/// 给文件系统的inode加上File trait，表示进程打开的文件，这个是放在内存中的，不是磁盘上的inode
+/// 感觉类似于Linux中的file结构体，表示打开的文件
 pub struct OSInode {
     readable: bool,
     writable: bool,
@@ -54,7 +56,9 @@ impl OSInode {
     }
 }
 
+
 lazy_static! {
+    /// The root inode
     pub static ref ROOT_INODE: Arc<Inode> = {
         let efs = EasyFileSystem::open(BLOCK_DEVICE.clone());
         Arc::new(EasyFileSystem::root_inode(&efs))
@@ -154,5 +158,25 @@ impl File for OSInode {
             total_write_size += write_size;
         }
         total_write_size
+    }
+
+    fn size(&self) -> usize {
+        self.inner.exclusive_access().inode.size() as usize
+    }
+
+    ///return file type
+    fn mode(&self) -> StatMode {
+        let result = self.inner.exclusive_access().inode.mode();
+        return StatMode::from_bits(result).unwrap();
+    }
+
+    ///return inode id
+    fn inode_id(&self) -> u32 {
+        log::info!("inode_id");
+        self.inner.exclusive_access().inode.inode_id()
+    }
+
+    fn link_count(&self) -> u32 {
+        self.inner.exclusive_access().inode.link_count()
     }
 }

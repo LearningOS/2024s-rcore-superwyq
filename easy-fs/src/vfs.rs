@@ -8,8 +8,8 @@ use alloc::vec::Vec;
 use spin::{Mutex, MutexGuard};
 /// Virtual filesystem layer over easy-fs
 pub struct Inode {
-    block_id: usize,
-    block_offset: usize,
+    block_id: usize, //inode对应的disk inode的block id
+    block_offset: usize, //inode对应的disk inode在block中的偏移
     fs: Arc<Mutex<EasyFileSystem>>,
     block_device: Arc<dyn BlockDevice>,
 }
@@ -73,6 +73,58 @@ impl Inode {
             })
         })
     }
+
+    ///return file size
+    pub fn size(&self) -> u32 {
+        let _fs = self.fs.lock();
+        self.read_disk_inode(|disk_inode| disk_inode.size)
+    }
+
+    ///return inode id
+    pub fn inode_id(&self) -> u32 {
+        let _fs = self.fs.lock();
+        let mut self_directory = DirEntry::empty();
+        self.read_disk_inode(|disk_inode| disk_inode.read_at(0, self_directory.as_bytes_mut(), &self.block_device));
+        self_directory.inode_id()
+    }
+
+    /// return link count
+    pub fn link_count(&self) -> u32 {
+        let _fs = self.fs.lock();
+        self.read_disk_inode(|disk_inode| disk_inode.link_count)
+    }
+
+    ///return file type
+    pub fn mode(&self) -> u32 {
+        let _fs = self.fs.lock();
+        self.read_disk_inode(|disk_inode| if disk_inode.is_file() { 0o100000 } else { 0o040000 }) //文件类型，详见statmode
+    }
+
+    ///有新的硬链接时，需要在inode对应的disk inode中的链接数加1
+    pub fn link(&self, new_name: &str,old_file_inode: &Inode) {
+
+        old_file_inode.modify_disk_inode(|disk_inode| {
+            disk_inode.link_count += 1;
+        });
+        self.modify_disk_inode(|disk_inode| {
+            // assert it is a directory
+            assert!(disk_inode.is_dir());
+            // append file in the dirent
+            let file_count = (disk_inode.size as usize) / DIRENT_SZ;
+            let new_size = (file_count + 1) * DIRENT_SZ;
+            // increase size
+            self.increase_size(new_size as u32, disk_inode, &mut self.fs.lock());
+            // write dirent
+            let dirent = DirEntry::new(new_name, old_file_inode.block_id as u32);
+            disk_inode.write_at(
+                file_count * DIRENT_SZ,
+                dirent.as_bytes(),
+                &self.block_device,
+            );
+        });
+    }
+
+
     /// Increase the size of a disk inode
     fn increase_size(
         &self,

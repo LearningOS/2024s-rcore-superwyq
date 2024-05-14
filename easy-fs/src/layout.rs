@@ -43,7 +43,7 @@ impl Debug for SuperBlock {
     }
 }
 
-impl SuperBlock {
+impl SuperBlock { //超级块，用于存储文件系统的基本信息
     /// Initialize a super block
     pub fn initialize(
         &mut self,
@@ -80,12 +80,17 @@ type IndirectBlock = [u32; BLOCK_SZ / 4];
 type DataBlock = [u8; BLOCK_SZ];
 /// A disk inode
 #[repr(C)]
-pub struct DiskInode {
-    pub size: u32,
-    pub direct: [u32; INODE_DIRECT_COUNT],
-    pub indirect1: u32,
-    pub indirect2: u32,
-    type_: DiskInodeType,
+pub struct DiskInode { //磁盘inode，用于存储文件的基本信息，
+    pub size: u32, //目录下所有文件的大小之和
+    pub direct: [u32; INODE_DIRECT_COUNT], //当文件大小小于等于28*512时，直接存储在direct中
+    pub indirect1: u32, 
+    //当文件大小大于28*512时，indirect1指向一个block，该block中存储着指向数据块的指针，每个指针指向一个数据块
+    //一个block大小为512字节，所以一个block中存储着512/4=128个指针，即128个数据块再加上28个直接指针，共有156个数据块，即78KB
+    pub indirect2: u32, 
+    //还不够时启用indirect2，indrect2指向一个block里面存放着指向一级索引块的指针，一级索引块中存放着指向直接索引块的指针，直接索引块中存放着指向数据块的指针
+    //算下来就是：28+128+128*128=16516个数据块，即8MB
+    type_: DiskInodeType, //dnode类型
+    pub link_count: u32, //用于记录文件硬链接数，当link_count为0时，表示该direntry可以被删除
 }
 
 impl DiskInode {
@@ -97,6 +102,7 @@ impl DiskInode {
         self.indirect1 = 0;
         self.indirect2 = 0;
         self.type_ = type_;
+        self.link_count = 1;
     }
     /// Whether this inode is a directory
     pub fn is_dir(&self) -> bool {
@@ -392,7 +398,7 @@ impl DiskInode {
 #[repr(C)]
 pub struct DirEntry {
     name: [u8; NAME_LENGTH_LIMIT + 1],
-    inode_id: u32,
+    inode_id: u32, //disk inode的id，在efs中可以根据inode_id找到对应的disk inode，也是bitmap中的索引
 }
 /// Size of a directory entry
 pub const DIRENT_SZ: usize = 32;
