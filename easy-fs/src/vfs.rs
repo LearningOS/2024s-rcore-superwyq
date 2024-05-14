@@ -124,6 +124,42 @@ impl Inode {
         });
     }
 
+    ///有硬链接被删除时，需要在inode对应的disk inode中的链接数减1
+    pub fn unlink(&self, file_inode: &Inode) {
+        file_inode.modify_disk_inode(|disk_inode| {
+            disk_inode.link_count -= 1;
+        });
+        self.modify_disk_inode(|disk_inode| {
+            // assert it is a directory
+            assert!(disk_inode.is_dir());
+            let file_count = (disk_inode.size as usize) / DIRENT_SZ;
+            let mut dirent = DirEntry::empty();
+            let mut i = 0;
+            while i < file_count {
+                assert_eq!(
+                    disk_inode.read_at(i * DIRENT_SZ, dirent.as_bytes_mut(), &self.block_device,),
+                    DIRENT_SZ,
+                );
+                if dirent.inode_id() == file_inode.inode_id() {
+                    while i < file_count - 1 {
+                        let mut next_dirent = DirEntry::empty();
+                        assert_eq!(
+                            disk_inode.read_at((i + 1) * DIRENT_SZ, next_dirent.as_bytes_mut(), &self.block_device,),
+                            DIRENT_SZ,
+                        );
+                        disk_inode.write_at(i * DIRENT_SZ, next_dirent.as_bytes(), &self.block_device);
+                        i += 1;
+                    }
+                    break;
+                }
+                i += 1;
+            }
+            let new_size = (file_count - 1) * DIRENT_SZ;
+            self.increase_size(new_size as u32, disk_inode, &mut self.fs.lock());
+        });
+        
+    }
+
 
     /// Increase the size of a disk inode
     fn increase_size(

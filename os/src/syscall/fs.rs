@@ -123,8 +123,14 @@ pub fn sys_linkat(_old_name: *const u8, _new_name: *const u8) -> isize {
 /// YOUR JOB: Implement unlinkat.
 pub fn sys_unlinkat(_name: *const u8) -> isize {
     trace!(
-        "kernel:pid[{}] sys_unlinkat NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_unlinkat",
         current_task().unwrap().pid.0
     );
-    0
+    if let Some(file_inode) = ROOT_INODE.find(translated_str(current_user_token(), _name).as_str()) {
+        ROOT_INODE.unlink(&file_inode);
+        return 0;
+    }else{
+        error!("unlinkat failed");
+        return -1;
+    }
 }
